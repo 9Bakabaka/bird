@@ -301,6 +301,7 @@ static void
 evpn_receive_mac(struct evpn_proto *p, const net_addr_evpn_mac *n0, rte *new)
 {
   struct channel *c = p->eth_channel;
+  struct rte_src *s = rt_get_source(&p->p, rd_to_u64(n0->rd));
   struct evpn_vlan *v = evpn_get_vlan_by_tag(p, n0->tag);
 
   net_addr *n = alloca(sizeof(net_addr_eth));
@@ -338,13 +339,13 @@ evpn_receive_mac(struct evpn_proto *p, const net_addr_evpn_mac *n0, rte *new)
     /* Hack to handle src_vni in bridge code */
     ea_set_attr_u32(&a->eattrs, tmp_linpool, EA_MPLS_LABEL, 0, EAF_TYPE_INT, v->vni);
 
-    rte *e = rte_get_temp(a, p->p.main_source);
-    rte_update2(c, n, e, p->p.main_source);
+    rte *e = rte_get_temp(a, s);
+    rte_update2(c, n, e, s);
   }
   else
   {
   withdraw:
-    rte_update2(c, n, NULL, p->p.main_source);
+    rte_update2(c, n, NULL, s);
   }
 }
 
