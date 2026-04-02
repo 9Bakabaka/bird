@@ -229,6 +229,10 @@ typedef union net_addr_evpn {
   net_addr_evpn_es es;
 } net_addr_evpn;
 
+#define NET_EVPN_HDR_LENGTH	OFFSETOF(net_addr_evpn, data)
+#define NET_EVPN_MAX_LENGTH	(NET_EVPN_HDR_LENGTH + 256)
+
+
 typedef union net_addr_union {
   net_addr n;
   net_addr_ip4 ip4;
@@ -306,6 +310,9 @@ extern const u16 net_max_text_length[];
 #define NET_ADDR_EVPN_ES(rd, esi, rtr) \
   ((net_addr_evpn_es) { NET_EVPN, NET_EVPN_ES, sizeof(net_addr_evpn_es), 0, rd, .esi = esi, .rtr = rtr })
 
+#define NET_ADDR_EVPN_RAW(subtype, dlen) \
+  ((net_addr_evpn) { NET_EVPN, subtype, NET_EVPN_HDR_LENGTH + dlen, 0, RD_NONE })
+
 
 static inline void net_fill_ip4(net_addr *a, ip4_addr prefix, uint pxlen)
 { *(net_addr_ip4 *)a = NET_ADDR_IP4(prefix, pxlen); }
@@ -351,6 +358,13 @@ static inline void net_fill_evpn_imet(net_addr *a, vpn_rd rd, u32 tag, ip_addr r
 
 static inline void net_fill_evpn_es(net_addr *a, vpn_rd rd, evpn_esi esi, ip_addr rtr)
 { *(net_addr_evpn_es *)a = NET_ADDR_EVPN_ES(rd, esi, rtr); }
+
+static inline void net_fill_evpn_raw(net_addr *a, uint subtype, byte *data, uint dlen)
+{
+  net_addr_evpn *n = (void *) a;
+  *n = NET_ADDR_EVPN_RAW(subtype, dlen);
+  memcpy(n->data, data, dlen);
+}
 
 static inline void net_fill_ipa(net_addr *a, ip_addr prefix, uint pxlen)
 {
@@ -491,6 +505,9 @@ static inline vpn_rd net_rd(const net_addr *a)
   return RD_NONE;
 }
 
+static inline uint net_evpn_data_length(const net_addr_evpn *a)
+{ return a->length - NET_EVPN_HDR_LENGTH; }
+
 
 static inline int net_equal(const net_addr *a, const net_addr *b)
 { return (a->length == b->length) && !memcmp(a, b, a->length); }
@@ -626,7 +643,7 @@ static inline int net_compare_evpn(const net_addr_evpn *a, const net_addr_evpn *
 {
   return
     uint_cmp(a->subtype, b->subtype) ?: rd_compare(a->rd, b->rd) ?: uint_cmp(a->tag, b->tag) ?:
-    uint_cmp(a->length, b->length) ?: memcmp(a->data, b->data, a->length - OFFSETOF(net_addr_evpn, data));
+    uint_cmp(a->length, b->length) ?: memcmp(a->data, b->data, net_evpn_data_length(a));
 }
 
 int net_compare(const net_addr *a, const net_addr *b);

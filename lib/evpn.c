@@ -32,6 +32,9 @@ evpn_format(char *buf, uint blen, const net_addr_evpn *n)
 
   case NET_EVPN_ES:
     return bsnprintf(buf, blen, "evpn es %s %10b %I", rds, &n->es.esi, n->es.rtr);
+
+  default:
+    return bsnprintf(buf, blen, "evpn type %d %s %*b", n->subtype, rds, net_evpn_data_length(n), n->data);
   }
 
   bug("unknown EVPN type %d", n->subtype);
