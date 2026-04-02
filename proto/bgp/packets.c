@@ -2248,6 +2248,8 @@ bgp_decode_nlri_flow6(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
 static inline void
 bgp_encode_evpn_ip(byte **pos, uint *size, ip_addr ip)
 {
+  /* IP address length is in bits! */
+
   if (ipa_is_ip4(ip))
   {
     **pos = IP4_MAX_PREFIX_LENGTH;
@@ -2265,6 +2267,8 @@ bgp_encode_evpn_ip(byte **pos, uint *size, ip_addr ip)
 static inline ip_addr
 bgp_decode_evpn_ip(struct bgp_parse_state *s, byte **pos, uint *len)
 {
+  /* IP address length is in bits! */
+
   uint alen = **pos;	/* Assume this is validated by caller */
   uint blen = 1 + (alen >> 3);
 
