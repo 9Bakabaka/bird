@@ -181,6 +181,8 @@ void isl_free_ptr(islab *isl, void *ptr);
     _v->_idmember = _b.id; \
     _v; })
 
+#define isl_find(_isl, _item) (_Generic((_item), u32: isl_find_id, default: isl_find_ptr)(_isl, _item))
+
 
 /* Auxiliary slab functions */
 
