@@ -2584,7 +2584,7 @@ bgp_bmp_encode_rte(ea_list *c, byte *buf, byte *end, const struct rte *new)
 
   /* Temporary prefix */
   struct bgp_prefix px = {
-    .src = new->src,
+    .src_global_id = new->src->global_id,
     .ni = NET_TO_INDEX(new->net),
   };
 
