@@ -188,8 +188,6 @@ typedef struct msl_head {
     ASSERT_DIE(atomic_exchange_explicit(&head->state, new_state, memory_order_acq_rel) == expected_state)
 #define MSL_MAYBE_SET_STATE(head, expected_state, new_state) \
     ({ enum msl_head_state orig = expected_state; atomic_compare_exchange_strong_explicit(&head->state, &orig, new_state, memory_order_acq_rel, memory_order_acquire); })
-#define MSL_PTI(s) \
-    (atomic_load_explicit(&s->thread_head_info[THIS_THREAD_ID], memory_order_relaxed))
 
 /* Common Sentinel Nodes for |mslab->full_heads| and |mslab->partial_heads|.
  * We need these for detecting collisions of alloc/free and cleanup.
@@ -307,6 +305,31 @@ void msl_delete(mslab *s)
 }
 
 /**
+ * msl_pti - get the thread has per thread info
+ * @s: mslab
+ *
+ * If needed, creates, and returns per thread info for the mslab.
+ */
+static msl_pti *
+msl_get_pti(mslab *s)
+{
+  struct msl_per_thread_info *ti = atomic_load_explicit(&s->thread_head_info[THIS_THREAD_ID], memory_order_relaxed);
+  if (ti)
+    return ti;
+
+  /* Initialize per-thread-info if this thread has not yet used this mslab */
+  ASSERT_DIE(this_thread_pool);
+  ti = mb_allocz(this_thread_pool,
+      sizeof(struct msl_per_thread_info) + sizeof(u32) * s->head_bitfield_len);
+
+  atomic_store_explicit(
+      &s->thread_head_info[THIS_THREAD_ID],
+      ti, memory_order_relaxed);
+
+  return ti;
+}
+
+/**
  * msl_alloc_from_page - allocate a block from the given mslab page
  * @s: mslab
  * @h: mslab head (page)
@@ -317,7 +340,7 @@ static void *
 msl_alloc_from_page(mslab *s, struct msl_head *h)
 {
   ASSERT_DIE(MSL_GET_STATE(h) == slh_thread);
-  struct msl_per_thread_info *ti = MSL_PTI(s);
+  msl_pti *ti = msl_get_pti(s);
 
   /* This routine must never collide with itself. It's expected to run
    * only on the head assigned to the current thread.
@@ -522,19 +545,7 @@ void *
 msl_alloc(mslab *s)
 {
   struct msl_head *h = NULL;
-  struct msl_per_thread_info *ti = MSL_PTI(s);
-
-  if (!ti)
-  {
-    /* Initialize per-thread-info if this thread has not yet used this mslab */
-    ASSERT_DIE(this_thread_pool);
-    ti = mb_allocz(this_thread_pool,
-	sizeof(struct msl_per_thread_info) + sizeof(u32) * s->head_bitfield_len);
-
-    atomic_store_explicit(
-	&s->thread_head_info[THIS_THREAD_ID],
-	ti, memory_order_relaxed);
-  }
+  msl_pti *ti = msl_get_pti(s);
 
   /* Try to use the head already owned by this thread */
   if (h = atomic_load_explicit(&ti->head, memory_order_acquire))
@@ -703,6 +714,7 @@ msl_cleanup_full_heads(struct mslab *s)
       /* Move on to the next head. */
       ASSERT_DIE(MSL_GET_STATE(this_head) == slh_full);
       this_head_ptr = &this_head->next;
+      this_head = atomic_load_explicit(this_head_ptr, memory_order_acquire);
       continue;
     }
     ASSERT_DIE(num_full < s->objs_per_slab);
@@ -956,6 +968,7 @@ msl_free(void *oo)
 {
   struct msl_head *h = MSL_GET_HEAD(oo);
   struct mslab *s = h->mslab;
+  msl_pti *ti = msl_get_pti(s);
 
 #ifdef POISON
   memset(oo, 0xdb, s->data_size);
@@ -978,7 +991,7 @@ msl_free(void *oo)
   if ((num_full_before == s->objs_per_slab) || (num_full_before == 1))
     ev_send(s->cleanup_ev_list, &s->event_clean);
 
-  atomic_fetch_add_explicit(&MSL_PTI(s)->freed_objs, 1, memory_order_relaxed);
+  atomic_fetch_add_explicit(&ti->freed_objs, 1, memory_order_relaxed);
 }
 
 /**
